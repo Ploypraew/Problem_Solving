@@ -1,183 +1,198 @@
 import streamlit as st
 
-# --- Song Class (โครงสร้างเดิม เพิ่ม audio_data) ---
-class Song:
-    def __init__(self, title, artist, audio_data):
+# --- 1. โครงสร้างข้อมูล (Data Structures) ---
+
+class CinemaShowtime:
+    def __init__(self, time, price):
+        self.time = time
+        self.price = price
+        # 2D Array: 0=ว่าง, 1=จองแล้ว, 2=ชำรุด (Maintenance)
+        self.seats = [[0 for _ in range(10)] for _ in range(5)]
+        self.next_showtime = None # Pointer สำหรับ Linked List ของรอบฉาย
+
+class Movie:
+    def __init__(self, title):
         self.title = title
-        self.artist = artist
-        self.audio_data = audio_data  # เพิ่มส่วนเก็บข้อมูลเสียง
-        self.next_song = None
+        self.head_showtime = None # Head ของ Linked List รอบฉาย
 
-    def __str__(self):
-        return f"{self.title} by {self.artist}"
-
-# --- MusicPlaylist Class (โครงสร้างเดิมทั้งหมด) ---
-class MusicPlaylist:
-    def __init__(self):
-        self.head = None
-        self.current_song = None
-        self.length = 0
-
-    def add_song(self, title, artist, audio_data):
-        new_song = Song(title, artist, audio_data)
-        if self.head is None:
-            self.head = new_song
-            self.current_song = new_song
+    def add_showtime(self, time, price):
+        new_show = CinemaShowtime(time, price)
+        if not self.head_showtime:
+            self.head_showtime = new_show
         else:
-            current = self.head
-            while current.next_song:
-                current = current.next_song
-            current.next_song = new_song
-        self.length += 1
-        st.success(f"Added: {new_song}")
+            current = self.head_showtime
+            while current.next_showtime:
+                current = current.next_showtime
+            current.next_showtime = new_show
 
-    def display_playlist(self):
-        if self.head is None:
-            return []
+    def delete_showtime(self, time_str):
+        if not self.head_showtime: return
+        if self.head_showtime.time == time_str:
+            self.head_showtime = self.head_showtime.next_showtime
+            return
+        current = self.head_showtime
+        while current.next_showtime and current.next_showtime.time != time_str:
+            current = current.next_showtime
+        if current.next_showtime:
+            current.next_showtime = current.next_showtime.next_showtime
 
-        playlist_songs = []
-        current = self.head
-        count = 1
-        while current:
-            # เพิ่มมาร์กเกอร์บอกว่าเพลงไหนกำลังเล่นอยู่
-            indicator = "👉" if current == self.current_song else f"{count}."
-            playlist_songs.append(f"{indicator} {current.title} by {current.artist}")
-            current = current.next_song
-            count += 1
-        return playlist_songs
+# --- 2. การจัดการสถานะระบบ (Initial Session) ---
 
-    def play_current_song(self):
-        if self.current_song:
-            st.info(f"Now playing: {self.current_song}")
-            # เล่นเพลงจริงผ่าน Streamlit
-            st.audio(self.current_song.audio_data)
+def init_session():
+    if 'movies' not in st.session_state:
+        # สร้างข้อมูลตัวอย่างเริ่มต้น
+        m1 = Movie("Dune: Part Two")
+        m1.add_showtime("11:00", 250)
+        m1.add_showtime("14:30", 250)
+        st.session_state.movies = {m1.title: m1}
+
+    if 'rows' not in st.session_state:
+        st.session_state.rows = ["A", "B", "C", "D", "E"]
+
+    if 'temp_selection' not in st.session_state:
+        st.session_state.temp_selection = []
+
+# --- 3. ส่วนสำหรับลูกค้า (Customer Mode) ---
+
+def customer_view():
+    st.header("🎟️ จองตั๋วภาพยนตร์")
+
+    movie_names = list(st.session_state.movies.keys())
+    selected_name = st.selectbox("เลือกภาพยนตร์", movie_names)
+    movie = st.session_state.movies[selected_name]
+
+    # ดึงรอบฉายจาก Linked List มาแสดงใน Slider
+    showtimes = []
+    curr = movie.head_showtime
+    while curr:
+        showtimes.append(curr)
+        curr = curr.next_showtime
+
+    if not showtimes:
+        st.warning("ยังไม่มีรอบฉายสำหรับเรื่องนี้")
+        return
+
+    selected_show = st.select_slider("เลือกรอบเวลา", options=showtimes, format_func=lambda x: x.time)
+
+    st.subheader(f"ผังที่นั่ง: {selected_name} ({selected_show.time})")
+    st.caption("⬜ ว่าง | 🔴 จองแล้ว | 🚧 ชำรุด | ✅ เลือกอยู่")
+
+    st.markdown("<div style='background-color:#333;color:white;text-align:center;padding:10px;margin-bottom:15px'>SCREEN</div>", unsafe_allow_html=True)
+
+    # วาดที่นั่งด้วย 2D Array
+    for r_idx, row_name in enumerate(st.session_state.rows):
+        cols = st.columns([1] + [1]*10)
+        cols[0].write(f"**{row_name}**")
+        for c_idx in range(10):
+            status = selected_show.seats[r_idx][c_idx]
+            seat_id = f"{row_name}{c_idx+1}"
+
+            if status == 1:
+                cols[c_idx+1].write("🔴")
+            elif status == 2:
+                cols[c_idx+1].write("🚧")
+            else:
+                is_sel = seat_id in st.session_state.temp_selection
+                if cols[c_idx+1].button("✅" if is_sel else "⬜", key=f"c_{seat_id}"):
+                    if is_sel: st.session_state.temp_selection.remove(seat_id)
+                    else: st.session_state.temp_selection.append(seat_id)
+                    st.rerun()
+
+    if st.session_state.temp_selection:
+        st.divider()
+        st.subheader("สรุปการจอง")
+        count = len(st.session_state.temp_selection)
+        total = count * selected_show.price
+        st.write(f"**ที่นั่ง:** {', '.join(st.session_state.temp_selection)}")
+        st.write(f"**ราคารวม:** {total:,} บาท")
+        if st.button("ยืนยันการจองทั้งหมด", type="primary"):
+            for s in st.session_state.temp_selection:
+                r, c = st.session_state.rows.index(s[0]), int(s[1:])-1
+                selected_show.seats[r][c] = 1 # Update 2D Array
+            st.session_state.temp_selection = []
+            st.success("จองที่นั่งสำเร็จ!")
+            st.rerun()
+
+# --- 4. ส่วนสำหรับผู้ให้บริการ (Admin Mode) ---
+
+def admin_view():
+    st.header("⚙️ ระบบจัดการหลังบ้าน")
+
+    tab1, tab2 = st.tabs(["เพิ่มหนัง/รอบฉาย", "จัดการผังที่นั่งชำรุด"])
+
+    with tab1:
+        st.subheader("เพิ่มภาพยนตร์ใหม่")
+        new_title = st.text_input("ชื่อหนัง")
+        if st.button("บันทึกภาพยนตร์"):
+            if new_title:
+                st.session_state.movies[new_title] = Movie(new_title)
+                st.success("เพิ่มหนังเรียบร้อย")
+                st.rerun()
+
+        st.divider()
+        movie_list = list(st.session_state.movies.keys())
+        if movie_list:
+            target = st.selectbox("เลือกหนังเพื่อเพิ่มรอบ", movie_list)
+            m = st.session_state.movies[target]
+            col_t, col_p = st.columns(2)
+            at = col_t.text_input("เวลาฉาย (เช่น 19:00)")
+            ap = col_p.number_input("ราคาต่อที่นั่ง", min_value=0, value=200)
+            if st.button("เพิ่มรอบฉาย"):
+                m.add_showtime(at, ap)
+                st.rerun()
+
+    with tab2:
+        movie_list = list(st.session_state.movies.keys())
+        if not movie_list: return
+        target_m = st.selectbox("เลือกหนังที่ต้องการจัดการ", movie_list, key="adm_m")
+        m = st.session_state.movies[target_m]
+
+        shows = []
+        curr = m.head_showtime
+        while curr:
+            shows.append(curr)
+            curr = curr.next_showtime
+
+        if shows:
+            sel_s = st.selectbox("เลือกรอบเวลา", shows, format_func=lambda x: x.time)
+
+            # แก้ราคาและลบรอบ
+            c1, c2 = st.columns(2)
+            new_p = c1.number_input("แก้ไขราคาตั๋ว", value=sel_s.price)
+            if c1.button("อัปเดตราคา"):
+                sel_s.price = new_p
+                st.success("อัปเดตแล้ว")
+
+            if c2.button("ลบรอบฉายนี้", type="secondary"):
+                m.delete_showtime(sel_s.time)
+                st.rerun()
+
+            st.divider()
+            st.subheader("ระบุที่นั่งชำรุด (Maintenance)")
+            for r_idx, row_name in enumerate(st.session_state.rows):
+                cols = st.columns([1] + [1]*10)
+                cols[0].write(row_name)
+                for c_idx in range(10):
+                    val = sel_s.seats[r_idx][c_idx]
+                    icon = "🚧" if val == 2 else "🔴" if val == 1 else "⬜"
+                    if cols[c_idx+1].button(icon, key=f"a_{row_name}{c_idx}"):
+                        if val != 1: # แก้ได้เฉพาะที่นั่งที่ยังไม่มีคนจอง
+                            sel_s.seats[r_idx][c_idx] = 2 if val == 0 else 0
+                            st.rerun()
         else:
-            st.warning("Playlist is empty or no song is selected to play.")
+            st.info("ยังไม่มีรอบฉาย")
 
-    def next_song(self):
-        if self.current_song and self.current_song.next_song:
-            self.current_song = self.current_song.next_song
-        elif self.current_song and not self.current_song.next_song:
-            st.warning("End of playlist. No next song.")
-        else:
-            st.warning("Playlist is empty.")
+# --- 5. การรันโปรแกรม ---
 
-    def prev_song(self):
-        if self.head is None or self.current_song is None:
-            st.warning("Playlist is empty or no song is selected.")
-            return
-        if self.current_song == self.head:
-            st.warning("Already at the beginning of the playlist.")
-            return
+def main():
+    st.set_page_config(page_title="Cinema Sync", layout="wide")
+    init_session()
 
-        current = self.head
-        while current.next_song != self.current_song:
-            current = current.next_song
-        self.current_song = current
-
-    def get_length(self):
-        return self.length
-
-    def delete_song(self, title):
-        if self.head is None:
-            st.error(f"Cannot delete '{title}'. Playlist is empty.")
-            return
-
-        if self.head.title == title:
-            if self.current_song == self.head:
-                self.current_song = self.head.next_song
-            self.head = self.head.next_song
-            self.length -= 1
-            st.success(f"Deleted: {title}")
-            if self.length == 0:
-                self.current_song = None
-            return
-
-        current = self.head
-        prev = None
-        while current and current.title != title:
-            prev = current
-            current = current.next_song
-
-        if current:
-            if self.current_song == current:
-                if current.next_song:
-                    self.current_song = current.next_song
-                elif prev:
-                    self.current_song = prev
-                else:
-                    self.current_song = None
-
-            prev.next_song = current.next_song
-            self.length -= 1
-            st.success(f"Deleted: {title}")
-        else:
-            st.error(f"Song '{title}' not found in the playlist.")
-
-# --- Streamlit App Layout (คงเดิมแต่เพิ่ม File Uploader) ---
-st.title("🎶 Music Playlist App")
-
-if 'playlist' not in st.session_state:
-    st.session_state.playlist = MusicPlaylist()
-
-# Sidebar for adding songs
-st.sidebar.header("Add New Song")
-# เพิ่มส่วน Upload ไฟล์
-uploaded_file = st.sidebar.file_uploader("Upload MP3 File", type=['mp3'])
-new_title = st.sidebar.text_input("Title")
-new_artist = st.sidebar.text_input("Artist")
-
-if st.sidebar.button("Add Song to Playlist"):
-    if new_title and new_artist and uploaded_file:
-        # อ่านไฟล์เป็น bytes เพื่อเก็บลงในโหนด Song
-        audio_bytes = uploaded_file.read()
-        st.session_state.playlist.add_song(new_title, new_artist, audio_bytes)
-        st.rerun() # รีเฟรชเพื่อให้เห็นรายการเพลงใหม่ทันที
+    choice = st.sidebar.radio("เลือกโหมด", ["ฝั่งลูกค้า (Booking)", "ฝั่งผู้ให้บริการ (Admin)"])
+    if choice == "ฝั่งลูกค้า (Booking)":
+        customer_view()
     else:
-        st.sidebar.warning("Please enter title, artist, and upload a file.")
+        admin_view()
 
-st.sidebar.markdown("--- 🎶")
-st.sidebar.header("Delete Song")
-delete_title = st.sidebar.text_input("Song Title to Delete")
-if st.sidebar.button("Delete Song"):
-    if delete_title:
-        st.session_state.playlist.delete_song(delete_title)
-        st.rerun()
-    else:
-        st.sidebar.warning("Please enter a song title to delete.")
-
-# Main content
-st.header("Your Current Playlist")
-playlist_content = st.session_state.playlist.display_playlist()
-if playlist_content:
-    for song_str in playlist_content:
-        st.write(song_str)
-else:
-    st.write("Playlist is empty. Add some songs from the sidebar!")
-
-st.markdown("--- 🎶")
-st.header("Playback Controls")
-
-# เรียกใช้งานฟังก์ชันเดิมที่แสดงผลตัวเล่นเพลง
-st.session_state.playlist.play_current_song()
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    if st.button("⏪ Previous"):
-        st.session_state.playlist.prev_song()
-        st.rerun()
-
-with col2:
-    if st.button("▶️ Play Current"):
-        # ใน streamlit การกดปุ่มจะรันโค้ดใหม่ทั้งหมดอยู่แล้ว 
-        # play_current_song() ถูกเรียกด้านบนแล้ว เพลงจะเล่นตาม current_song ปัจจุบัน
-        pass
-
-with col3:
-    if st.button("⏩ Next"):
-        st.session_state.playlist.next_song()
-        st.rerun()
-
-st.markdown("--- 🎶")
-st.write(f"Total songs in playlist: {st.session_state.playlist.get_length()} song(s)")
+if __name__ == "__main__":
+    main()

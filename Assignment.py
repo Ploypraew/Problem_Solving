@@ -3,20 +3,20 @@ import streamlit as st
 # --- 1. Data Structures ---
 
 class MovieNode:
-    def __init__(self, movie_name, rows=5, cols=8):
-        self.movie_name = movie_name
-        # สร้าง 2D Array แยกสำหรับหนังแต่ละเรื่อง
-        self.seats = [[0 for _ in range(cols)] for _ in range(rows)]
+    def __init__(self, name, price, showtime):
+        self.movie_name = name
+        self.price = price
+        self.showtimes = [showtime]  # เก็บเป็น List ของรอบฉาย
+        # ผังที่นั่ง 2D Array (0:ว่าง, 1:จอง, 2:พัง)
+        self.seats = [[0 for _ in range(10)] for _ in range(6)]
         self.next = None
 
 class CinemaLogic:
     def __init__(self):
         self.head = None
-        self.rows = 6
-        self.cols = 10
 
-    def add_movie(self, name):
-        new_node = MovieNode(name, self.rows, self.cols)
+    def add_movie(self, name, price, showtime):
+        new_node = MovieNode(name, price, showtime)
         if not self.head:
             self.head = new_node
         else:
@@ -25,8 +25,8 @@ class CinemaLogic:
                 current = current.next
             current.next = new_node
 
-    def get_movie_node(self, name):
-        """ค้นหา Node ของหนังเพื่อดึงข้อมูลที่นั่ง (Linear Search)"""
+    def get_movie(self, name):
+        """ค้นหาหนังด้วย Linear Search"""
         current = self.head
         while current:
             if current.movie_name == name:
@@ -34,105 +34,149 @@ class CinemaLogic:
             current = current.next
         return None
 
+    def remove_movie(self, name):
+        """ลบหนังออกจาก Linked List"""
+        current = self.head
+        prev = None
+        while current and current.movie_name != name:
+            prev = current
+            current = current.next
+        if current:
+            if not prev:
+                self.head = current.next
+            else:
+                prev.next = current.next
+            return True
+        return False
+
     def get_all_movies(self):
         movies = []
         current = self.head
         while current:
-            movies.append(current.movie_name)
+            movies.append(current)
             current = current.next
         return movies
 
-# --- 2. Streamlit UI Setup ---
-
-st.set_page_config(page_title="Cinema Admin Pro", layout="wide")
-st.title("🎬 ระบบจัดการโรงภาพยนตร์ (รายเรื่อง)")
+# --- 2. Streamlit Session State ---
 
 if 'cinema' not in st.session_state:
     st.session_state.cinema = CinemaLogic()
+if 'page' not in st.session_state:
+    st.session_state.page = "home"
+if 'selected_movie' not in st.session_state:
+    st.session_state.selected_movie = None
 
 cinema = st.session_state.cinema
 
-# --- 3. Sidebar: Management ---
-st.sidebar.header("⚙️ ตั้งค่าระบบ")
-new_movie = st.sidebar.text_input("เพิ่มชื่อหนังใหม่")
-if st.sidebar.button("ยืนยันการเพิ่มหนัง"):
-    if new_movie:
-        cinema.add_movie(new_movie)
-        st.rerun()
+# --- 3. UI Functions ---
 
-all_movies = cinema.get_all_movies()
+def go_to_detail(movie_name):
+    st.session_state.selected_movie = movie_name
+    st.session_state.page = "detail"
+    st.rerun()
 
-# --- 4. Main Interface ---
-if not all_movies:
-    st.info("กรุณาเพิ่มชื่อหนังที่แถบด้านซ้ายเพื่อเริ่มต้นระบบ")
-else:
-    # เลือกหนังที่จะจัดการ
-    selected_movie_name = st.selectbox("เลือกภาพยนตร์ที่ต้องการจัดการที่นั่ง:", all_movies)
-    movie_node = cinema.get_movie_node(selected_movie_name)
+def go_home():
+    st.session_state.page = "home"
+    st.rerun()
 
-    col1, col2 = st.columns([2, 1])
+# --- 4. Page Routing ---
 
-    with col1:
-        st.subheader(f"💺 ผังที่นั่ง: {selected_movie_name}")
+# --- PAGE: HOME ---
+if st.session_state.page == "home":
+    st.title("🎬 ระบบจัดการโรงภาพยนตร์")
+    
+    # ส่วนที่ 1: เพิ่มหนังใหม่
+    with st.expander("➕ เพิ่มภาพยนตร์เรื่องใหม่"):
+        col1, col2, col3 = st.columns(3)
+        new_name = col1.text_input("ชื่อหนัง")
+        new_price = col2.number_input("ราคาบัตร (บาท)", min_value=0, value=150)
+        new_time = col3.text_input("รอบฉาย (เช่น 14:00)")
         
-        # แสดงผลและแก้ไขสถานะ
-        for r in range(cinema.rows):
-            cols_ui = st.columns(cinema.cols)
-            for c in range(cinema.cols):
-                status = movie_node.seats[r][c]
-                label = f"{r},{c}"
-                
-                # เงื่อนไขสีและไอคอน
-                if status == 1: # จองแล้ว (สีแดง)
-                    icon, color = "🔴", "red"
-                    disabled = True  # ล็อกไว้แก้ไขไม่ได้
-                elif status == 2: # พัง (สีเหลือง)
-                    icon, color = "⚠️", "orange"
-                    disabled = False # แก้ไขได้
-                else: # ว่าง
-                    icon, color = "⬜", "gray"
-                    disabled = False # แก้ไขได้ (เพื่อแจ้งพัง)
-
-                # ปุ่มกดที่นั่ง
-                if cols_ui[c].button(f"{icon}\n{label}", key=f"seat_{selected_movie_name}_{r}_{c}", disabled=disabled):
-                    # Logic: ถ้าว่าง (0) -> กดแล้วเป็น พัง (2) | ถ้าพัง (2) -> กดแล้วกลับเป็น ว่าง (0)
-                    movie_node.seats[r][c] = 2 if status == 0 else 0
-                    st.rerun()
-
-        st.caption("หมายเหตุ: 🔴 ที่นั่งจองแล้ว (แก้ไขไม่ได้) | ⚠️ ที่นั่งชำรุด (คลิกเพื่อแจ้งซ่อม/คืนสถานะ) | ⬜ ที่นั่งปกติ")
-
-    with col2:
-        st.subheader("📋 รายงานสถานะ")
-        
-        # 1. ค้นหาที่นั่งพัง (Linear Search ใน 2D Array)
-        st.write("**ที่นั่งที่ต้องแจ้งซ่อม:**")
-        broken_found = []
-        for r in range(cinema.rows):
-            for c in range(cinema.cols):
-                if movie_node.seats[r][c] == 2:
-                    broken_found.append(f"แถว {r}-คอลัมน์ {c}")
-        
-        if broken_found:
-            for item in broken_found:
-                st.warning(f"📍 {item}")
-            if st.button("ยืนยันการซ่อมเสร็จทั้งหมด"):
-                for r in range(cinema.rows):
-                    for c in range(cinema.cols):
-                        if movie_node.seats[r][c] == 2:
-                            movie_node.seats[r][c] = 0
-                st.rerun()
-        else:
-            st.success("ไม่มีที่นั่งชำรุด")
-
-        st.divider()
-        
-        # 2. จำลองการจอง (เพื่อทดสอบการ Lock ที่นั่ง)
-        st.write("**จำลองการจอง (Admin Only):**")
-        r_in = st.number_input("แถว", 0, cinema.rows-1, key="r_in")
-        c_in = st.number_input("หลัก", 0, cinema.cols-1, key="c_in")
-        if st.button("จองที่นั่งนี้ (Lock)"):
-            if movie_node.seats[r_in][c_in] == 0:
-                movie_node.seats[r_in][c_in] = 1
+        if st.button("บันทึกข้อมูล"):
+            if new_name and new_time:
+                cinema.add_movie(new_name, new_price, new_time)
+                st.success(f"เพิ่ม {new_name} เรียบร้อยแล้ว")
                 st.rerun()
             else:
-                st.error("ที่นั่งไม่ว่างหรือชำรุด")
+                st.error("กรุณากรอกข้อมูลให้ครบถ้วน")
+
+    st.divider()
+
+    # ส่วนที่ 2: ค้นหาและแสดงรายชื่อหนัง
+    search_q = st.text_input("🔍 ค้นหาชื่อหนังในระบบ")
+    all_movies = cinema.get_all_movies()
+    
+    st.subheader("รายชื่อหนังทั้งหมด")
+    if not all_movies:
+        st.info("ยังไม่มีข้อมูลหนังในระบบ")
+    else:
+        for m in all_movies:
+            # Linear Search Filter
+            if search_q.lower() in m.movie_name.lower():
+                with st.container(border=True):
+                    c1, c2, c3 = st.columns([2, 2, 1])
+                    c1.write(f"**{m.movie_name}**")
+                    c2.write(f"ราคา: {m.price} บาท | รอบฉาย: {', '.join(m.showtimes)}")
+                    if c3.button("จัดการหนัง", key=f"manage_{m.movie_name}"):
+                        go_to_detail(m.movie_name)
+
+# --- PAGE: DETAIL ---
+elif st.session_state.page == "detail":
+    m = cinema.get_movie(st.session_state.selected_movie)
+    if not m:
+        st.error("ไม่พบข้อมูลหนัง")
+        if st.button("กลับหน้าหลัก"): go_home()
+    else:
+        st.button("⬅️ กลับหน้าหลัก", on_click=go_home)
+        st.title(f"🎥 จัดการหนัง: {m.movie_name}")
+        
+        tab1, tab2 = st.tabs(["⚙️ แก้ไขข้อมูล & รอบฉาย", "💺 จัดการที่นั่ง"])
+        
+        with tab1:
+            col_a, col_b = st.columns(2)
+            # แก้ไขราคา
+            new_p = col_a.number_input("แก้ไขราคาบัตร", value=float(m.price))
+            if col_a.button("อัปเดตราคา"):
+                m.price = new_p
+                st.success("อัปเดตราคาแล้ว")
+
+            # จัดการรอบฉาย
+            st.write("---")
+            col_t1, col_t2 = st.columns(2)
+            add_t = col_t1.text_input("เพิ่มรอบฉายใหม่")
+            if col_t1.button("เพิ่มรอบ"):
+                if add_t:
+                    m.showtimes.append(add_t)
+                    st.rerun()
+            
+            del_t = col_t2.selectbox("ลบรอบฉาย", m.showtimes)
+            if col_t2.button("ยืนยันลบรอบ"):
+                if len(m.showtimes) > 1:
+                    m.showtimes.remove(del_t)
+                    st.rerun()
+                else:
+                    st.warning("ต้องมีอย่างน้อย 1 รอบฉาย")
+
+            st.write("---")
+            if st.button("🗑️ ลบหนังเรื่องนี้ออกจากระบบ", type="primary"):
+                if cinema.remove_movie(m.movie_name):
+                    go_home()
+
+        with tab2:
+            st.subheader("ผังที่นั่ง")
+            # ค้นหาที่นั่งพัง (Linear Search)
+            broken = [f"({r},{c})" for r in range(6) for c in range(10) if m.seats[r][c] == 2]
+            if broken:
+                st.warning(f"⚠️ ที่นั่งชำรุด: {', '.join(broken)}")
+
+            for r in range(6):
+                cols = st.columns(10)
+                for c in range(10):
+                    status = m.seats[r][c]
+                    icon = "🔴" if status == 1 else "⚠️" if status == 2 else "⬜"
+                    disabled = (status == 1) # ล็อกที่จองแล้ว
+                    
+                    if cols[c].button(f"{icon}\n{r},{c}", key=f"s_{r}_{c}", disabled=disabled):
+                        # สลับสถานะเฉพาะที่นั่งปกติ <-> พัง
+                        m.seats[r][c] = 2 if status == 0 else 0
+                        st.rerun()

@@ -1,0 +1,215 @@
+class MovieNode:
+    def __init__(self, movie_name, price=200):
+        self.movie_name = movie_name
+        self.price = price
+        self.showtimes = []
+        self.next = None
+
+class CinemaLogic:
+    def __init__(self, rows=6, cols=10):
+        self.head = None
+        self.rows = rows
+        self.cols = cols
+        self.seats = [[0 for _ in range(cols)] for _ in range(rows)]
+
+    def add_movie(self, name, price=200):
+        new_node = MovieNode(name, price)
+        if not self.head:
+            self.head = new_node
+        else:
+            current = self.head
+            while current.next:
+                current = current.next
+            current.next = new_node
+        print(f"✅ เพิ่มหนัง '{name}' ราคา {price} บาท เรียบร้อยแล้ว")
+
+    def find_movie(self, name):
+        current = self.head
+        while current:
+            if current.movie_name.lower() == name.lower():
+                return current
+            current = current.next
+        return None
+
+    def remove_movie(self, name):
+        current = self.head
+        prev = None
+        while current and current.movie_name.lower() != name.lower():
+            prev = current
+            current = current.next
+
+        if current:
+            if not prev:
+                self.head = current.next
+            else:
+                prev.next = current.next
+            print(f"✅ ลบหนัง '{name}' สำเร็จ")
+            return True
+        print(f"❌ ไม่พบหนังชื่อ '{name}' ในระบบ กรุณาตรวจสอบชื่ออีกครั้ง")
+        return False
+
+    def get_all_movies_data(self):
+        movies = []
+        current = self.head
+        while current:
+            movies.append({
+                "name": current.movie_name,
+                "price": current.price,
+                "shows": current.showtimes
+            })
+            current = current.next
+        return movies
+
+    def display_seats(self):
+        print("\n--- ผังที่นั่งปัจจุบัน (⬜: ปกติ, ⚠️: ชำรุด) ---")
+        header = "    " + "  ".join([str(i) for i in range(self.cols)])
+        print(header)
+        for r in range(self.rows):
+            row_str = f"{r} | "
+            for c in range(self.cols):
+                icon = "⚠️" if self.seats[r][c] == 2 else "⬜"
+                row_str += icon + "  "
+            print(row_str)
+
+    def mark_as_broken(self, r, c):
+        if 0 <= r < self.rows and 0 <= c < self.cols:
+            self.seats[r][c] = 2
+            return True
+        return False
+
+# --- Helper Function for Validation ---
+
+def get_valid_int(prompt):
+    """ฟังก์ชันช่วยรับค่าตัวเลขและป้องกัน Error จากการพิมพ์ตัวอักษร"""
+    while True:
+        try:
+            val = input(prompt).strip()
+            if not val: return 0 # ค่าเริ่มต้นถ้าไม่กรอก
+            return int(val)
+        except ValueError:
+            print("⚠️ Error: กรุณากรอกเป็นตัวเลขเท่านั้น!")
+
+# --- Main Terminal UI ---
+
+def main():
+    cinema = CinemaLogic()
+    cinema.add_movie("Avatar", 250)
+    cinema.add_movie("Iron Man", 180)
+
+    while True:
+        print("\n" + "="*45)
+        print("🎬 CINEMA MANAGEMENT & MAINTENANCE SYSTEM")
+        print("="*45)
+        print("1. จัดการภาพยนตร์ (เพิ่ม/ลบ/ราคา/รอบฉาย)")
+        print("2. แจ้งที่นั่งชำรุด (⚠️)")
+        print("3. ค้นหาหนัง")
+        print("4. รายงานสรุปที่นั่งเสีย")
+        print("0. ออกจากโปรแกรม")
+
+        choice = input("\nเลือกเมนู: ").strip()
+
+        if choice == "1":
+            while True:
+                movies = cinema.get_all_movies_data()
+                print("\n--- [ รายชื่อภาพยนตร์และรอบฉาย ] ---")
+                if not movies:
+                    print("(ไม่มีภาพยนตร์ในระบบ)")
+                else:
+                    for i, m in enumerate(movies, 1):
+                        shows = ", ".join(m['shows']) if m['shows'] else "ยังไม่มีรอบฉาย"
+                        print(f"{i}. {m['name']} | ราคา: {m['price']} บาท | รอบ: [{shows}]")
+
+                print("-" * 45)
+                print(" (A) เพิ่มหนัง | (D) ลบหนัง | (E) แก้ไขราคา/รอบฉาย | (B) กลับ")
+                sub = input("เลือกคำสั่ง: ").strip().upper()
+
+                if sub == "A":
+                    name = input("ชื่อหนัง: ").strip()
+                    if name:
+                        price = get_valid_int(f"ระบุราคาตั๋วสำหรับ {name}: ")
+                        cinema.add_movie(name, price)
+                    else:
+                        print("⚠️ ชื่อหนังห้ามว่าง!")
+                elif sub == "D":
+                    name = input("พิมพ์ชื่อหนังที่ต้องการลบ: ").strip()
+                    cinema.remove_movie(name)
+                elif sub == "E":
+                    name = input("พิมพ์ชื่อหนังที่ต้องการแก้ไข: ").strip()
+                    movie = cinema.find_movie(name)
+                    if movie:
+                        while True:
+                            print(f"\n⚙️ กำลังแก้ไข: {movie.movie_name}")
+                            print(" 1. แก้ไขราคา | 2. เพิ่มรอบฉาย | 3. ลบรอบฉาย | 4. ยกเลิก")
+                            edit_choice = input("เลือก: ").strip()
+                            if edit_choice == "1":
+                                movie.price = get_valid_int(f"ระบุราคาใหม่ (เดิม {movie.price}): ")
+                                print("✅ อัปเดตราคาแล้ว")
+                                break
+                            elif edit_choice == "2":
+                                t = input("ระบุเวลาที่ต้องการเพิ่ม (เช่น 14:30): ").strip()
+                                if t:
+                                    movie.showtimes.append(t)
+                                    movie.showtimes.sort()
+                                    print(f"✅ เพิ่มรอบ {t} แล้ว")
+                                break
+                            elif edit_choice == "3":
+                                if not movie.showtimes:
+                                    print("❌ ไม่มีรอบฉายให้ลบ")
+                                    break
+                                print(f"รอบปัจจุบัน: {movie.showtimes}")
+                                t = input("พิมพ์เวลาที่ต้องการลบ: ").strip()
+                                if t in movie.showtimes:
+                                    movie.showtimes.remove(t)
+                                    print("✅ ลบรอบฉายแล้ว")
+                                else: print("❌ ไม่พบรอบฉายนี้ กรุณาพิมพ์ให้ตรงกัน")
+                                break
+                            elif edit_choice == "4":
+                                break
+                            else:
+                                print("⚠️ คำสั่งไม่ถูกต้อง กรุณาเลือก 1-4")
+                    else:
+                        print(f"❌ ไม่พบหนังชื่อ '{name}'")
+                elif sub == "B":
+                    break
+                else:
+                    print("⚠️ คำสั่งไม่ถูกต้อง! กรุณาพิมพ์ A, D, E หรือ B")
+
+        elif choice == "2":
+            cinema.display_seats()
+            print("\n--- ระบุตำแหน่งที่ชำรุด ---")
+            r = get_valid_int(f"แถว (0-{cinema.rows-1}): ")
+            c = get_valid_int(f"หลัก (0-{cinema.cols-1}): ")
+            if cinema.mark_as_broken(r, c):
+                print(f"✅ บันทึกที่นั่ง [{r},{c}] ชำรุดเรียบร้อย")
+            else:
+                print(f"❌ พิกัดไม่อยู่ในช่วงที่กำหนด (0-{cinema.rows-1}, 0-{cinema.cols-1})")
+
+        elif choice == "3":
+            query = input("\n🔍 ค้นหาชื่อหนัง: ").strip().lower()
+            if not query:
+                print("⚠️ กรุณาพิมพ์ชื่อหนังที่ต้องการค้นหา")
+                continue
+            found = [f"{m['name']} ({m['price']} บ.)" for m in cinema.get_all_movies_data() if query in m['name'].lower()]
+            if found:
+                print(f"✅ เจอแล้ว! ผลลัพธ์: {', '.join(found)}")
+            else:
+                print(f"❌ ไม่พบหนังที่ค้นหา")
+
+        elif choice == "4":
+            broken = [(r, c) for r in range(cinema.rows) for c in range(cinema.cols) if cinema.seats[r][c] == 2]
+            if not broken:
+                print("\n✅ ระบบปกติ: ไม่พบที่นั่งชำรุด")
+            else:
+                print("\n🛠️ รายงานที่นั่งชำรุด:")
+                for r, c in broken:
+                    print(f"📍 แถว {r} หลัก {c}")
+                print(f"📢 รวมทั้งหมด {len(broken)} จุด")
+
+        elif choice == "0":
+            print("👋 ปิดโปรแกรม... ขอบคุณที่ใช้บริการ")
+            break
+        else:
+            print("⚠️ เมนูไม่ถูกต้อง! กรุณาเลือกเลข 0-4")
+
+if __name__ == "__main__":
+    main()
